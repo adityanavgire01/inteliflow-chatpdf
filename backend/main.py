@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
@@ -56,6 +56,9 @@ class ChatResponse(BaseModel):
 # Store for document chunks
 document_chunks = {}
 
+# Store for document files
+document_files = {}
+
 @app.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
     if not file.filename.endswith('.pdf'):
@@ -75,6 +78,9 @@ async def upload_pdf(file: UploadFile = File(...)):
         # Create document ID
         document_id = file.filename.replace(".pdf", "")
         
+        # Store the PDF file
+        document_files[document_id] = content
+        
         # Store chunks in ChromaDB
         collection = chroma_client.create_collection(name=document_id)
         chunks = [text[i:i+1000] for i in range(0, len(text), 1000)]
@@ -89,13 +95,28 @@ async def upload_pdf(file: UploadFile = File(...)):
         logger.error(f"Error in upload_pdf: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/document/{document_id}")
+async def get_document(document_id: str):
+    if document_id not in document_files:
+        raise HTTPException(status_code=404, detail="Document not found")
+    
+    return Response(
+        content=document_files[document_id],
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename={document_id}.pdf"}
+    )
+
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     try:
         logger.info(f"Received chat request for document: {request.document_id}")
         
         # Get relevant chunks from ChromaDB
-        collection = chroma_client.get_collection(name=request.document_id)
+        try:
+            collection = chroma_client.get_collection(name=request.document_id)
+        except Exception as e:
+            logger.error(f"Error getting collection: {str(e)}")
+            raise HTTPException(status_code=404, detail="Document not found or not processed")
         
         # Get the last user message
         last_message = next((msg for msg in reversed(request.messages) if msg.role == "user"), None)
