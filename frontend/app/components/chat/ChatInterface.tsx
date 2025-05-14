@@ -5,80 +5,100 @@ import { PaperAirplaneIcon, PlusIcon } from '@heroicons/react/24/outline';
 import { motion } from 'framer-motion';
 import axios from 'axios';
 
-interface Message {
-  id: string;
+// Message type should align with MainLayout's ChatMessage if possible, or be mapped.
+// For now, using a local type and we assume MainLayout passes compatible data.
+interface DisplayMessage {
+  id: string; // MainLayout might not provide this, might need to generate here or adapt
+  role: 'user' | 'ai'; // Renamed from type to role
   content: string;
-  type: 'user' | 'ai';
-  timestamp: Date;
+  timestamp: Date; // MainLayout might not provide this
   citations?: string[];
 }
 
-export default function ChatInterface() {
-  const [messages, setMessages] = useState<Message[]>([]);
+// Props from MainLayout
+interface ChatMessageFromLayout {
+    role: string;
+    content: string;
+}
+
+interface ChatInterfaceProps {
+  messages?: ChatMessageFromLayout[]; // Messages for the selected document
+  documentId?: string | null;      // ID of the selected document
+  documentName?: string | null;    // Name of the selected document (for header)
+  onAddMessage?: (message: ChatMessageFromLayout) => void;
+  onNewChat?: () => void;
+}
+
+export default function ChatInterface({
+  messages = [],
+  documentId,
+  documentName,
+  onAddMessage,
+  onNewChat,
+}: ChatInterfaceProps) {
   const [input, setInput] = useState('');
-  const [currentDocument, setCurrentDocument] = useState<{ id: string; name: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    const handleDocumentUpload = (event: CustomEvent) => {
-      const { documentId, fileName } = event.detail;
-      setCurrentDocument({ id: documentId, name: fileName });
-      setMessages([{
-        id: Date.now().toString(),
-        content: `Document "${fileName}" uploaded successfully! You can now ask questions about it.`,
-        type: 'ai',
-        timestamp: new Date(),
-      }]);
-    };
-
-    window.addEventListener('documentUploaded', handleDocumentUpload as EventListener);
-    return () => {
-      window.removeEventListener('documentUploaded', handleDocumentUpload as EventListener);
-    };
-  }, []);
+  // Transform messages from layout to display format (adding id, timestamp)
+  // This is a simple transformation; in a real app, backend might provide full objects
+  const displayMessages: DisplayMessage[] = messages.map((msg, index) => ({
+    id: `${documentId}_${index}_${new Date().getTime()}`, // Simple unique ID
+    role: msg.role as 'user' | 'ai',
+    content: msg.content,
+    timestamp: new Date(), // Placeholder timestamp
+  }));
 
   const handleSend = async () => {
-    if (!input.trim() || !currentDocument) return;
+    if (!input.trim() || !documentId || !onAddMessage) return;
 
-    const newMessage: Message = {
-      id: Date.now().toString(),
+    const userMessage: ChatMessageFromLayout = {
+      role: 'user',
       content: input,
-      type: 'user',
-      timestamp: new Date(),
     };
-
-    setMessages(prev => [...prev, newMessage]);
+    
+    // Add user message to local state/UI immediately via MainLayout
+    onAddMessage(userMessage);
+    
+    const currentInput = input; // Save input before clearing
     setInput('');
     setIsLoading(true);
 
     try {
+      // Prepare messages for the backend, mapping 'ai' to 'assistant' for OpenAI compatibility
+      const messagesForBackend = [...messages, userMessage].map(m => ({
+        role: m.role === 'ai' ? 'assistant' : m.role, // Key change here
+        content: m.content
+      }));
+
       const response = await axios.post('http://localhost:8000/chat', {
-        messages: [{
-          role: 'user',
-          content: input
-        }],
-        document_id: currentDocument.id
+        messages: messagesForBackend, 
+        document_id: documentId
       });
 
-      const aiResponse: Message = {
-        id: Date.now().toString(),
+      const aiMessage: ChatMessageFromLayout = {
+        role: 'ai', // Store as 'ai' internally in our app state via MainLayout
         content: response.data.response,
-        type: 'ai',
-        timestamp: new Date(),
-        citations: response.data.citations,
       };
+      if (onAddMessage) {
+        onAddMessage(aiMessage); 
+      }
 
-      setMessages(prev => [...prev, aiResponse]);
     } catch (error) {
       console.error('Error sending message:', error);
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        content: 'Error processing your request. Please try again.',
-        type: 'ai',
-        timestamp: new Date(),
-      }]);
+      if (onAddMessage) {
+        onAddMessage({
+          role: 'ai', // Store as 'ai' internally
+          content: 'Error processing your request. Please try again.',
+        });
+      }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleNewChatClick = () => {
+    if (onNewChat) {
+      onNewChat();
     }
   };
 
@@ -87,22 +107,22 @@ export default function ChatInterface() {
       {/* Header */}
       <div className="p-4 border-b border-gray-200">
         <h2 className="text-lg font-semibold">
-          {currentDocument ? currentDocument.name : 'No Document Selected'}
+          {documentName ? documentName : 'No Document Selected'}
         </h2>
       </div>
 
       {/* Message Thread */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((message) => (
+        {displayMessages.map((message) => (
           <motion.div
             key={message.id}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+            className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
               className={`max-w-[70%] rounded-lg p-3 ${
-                message.type === 'user'
+                message.role === 'user'
                   ? 'bg-purple-600 text-white'
                   : 'bg-gray-100 text-gray-900'
               }`}
@@ -123,28 +143,39 @@ export default function ChatInterface() {
             </div>
           </motion.div>
         ))}
+        {displayMessages.length === 0 && documentId && (
+            <p className="text-gray-400 text-sm text-center py-4">Chat history is empty. Ask something about "{documentName || 'this document'}".</p>
+        )}
+        {!documentId && (
+            <p className="text-gray-400 text-sm text-center py-4">Please select or upload a document to start chatting.</p>
+        )}
       </div>
 
       {/* Input Area */}
       <div className="p-4 border-t border-gray-200">
         <div className="flex items-center space-x-2">
-          <button className="p-2 hover:bg-gray-100 rounded-lg">
+          <button 
+            onClick={handleNewChatClick}
+            className="p-2 hover:bg-gray-100 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+            title="New Chat Session"
+            disabled={!documentId || isLoading}
+            >
             <PlusIcon className="w-5 h-5 text-gray-500" />
           </button>
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={currentDocument ? "Ask about your document..." : "Upload a document to start chatting..."}
+            placeholder={documentId ? "Ask about your document..." : "Upload or select a document..."}
             className="flex-1 p-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
             onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-            disabled={!currentDocument || isLoading}
+            disabled={!documentId || isLoading}
           />
           <button
             onClick={handleSend}
-            disabled={!currentDocument || isLoading || !input.trim()}
+            disabled={!documentId || isLoading || !input.trim()}
             className={`p-2 bg-purple-600 text-white rounded-lg transition-colors ${
-              (!currentDocument || isLoading || !input.trim()) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-purple-700'
+              (!documentId || isLoading || !input.trim()) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-purple-700'
             }`}
           >
             <PaperAirplaneIcon className="w-5 h-5" />
