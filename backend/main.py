@@ -191,6 +191,20 @@ async def chat(request: ChatRequest):
         logger.error(f"Error in chat endpoint for document {doc_name_for_error}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing chat for {doc_name_for_error}: {str(e)}")
 
+@app.delete("/document/{document_id}")
+async def delete_document(document_id: str):
+    # Remove from in-memory store
+    if document_id in document_files:
+        del document_files[document_id]
+    else:
+        raise HTTPException(status_code=404, detail="Document not found")
+    # Remove ChromaDB collection
+    try:
+        chroma_client.delete_collection(name=document_id)
+    except Exception as e:
+        logger.warning(f"ChromaDB collection for {document_id} could not be deleted: {e}")
+    return {"message": f"Document {document_id} deleted successfully."}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000) 
