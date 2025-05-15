@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
+import axios from "axios";
+import { SunIcon, MoonIcon } from '@heroicons/react/24/outline';
 // Removed clsx as it's not used in this simplified version of the PDF panel rendering
 // import { ChevronDoubleLeftIcon, ChevronDoubleRightIcon } from '@heroicons/react/24/outline'; // Icons will be handled by PDFViewer
 
@@ -39,6 +41,16 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [chatSessions, setChatSessions] = useState<ChatSessions>({});
 
+  // Dark mode state
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('theme');
+      if (stored === 'light' || stored === 'dark') return stored;
+      if (window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
+    }
+    return 'light';
+  });
+
   useEffect(() => {
     const savedWidth = localStorage.getItem('pdfPanelWidth');
     if (savedWidth) {
@@ -58,6 +70,19 @@ export default function MainLayout({ children }: MainLayoutProps) {
   useEffect(() => {
     localStorage.setItem('isPdfPanelCollapsed', isPdfPanelCollapsed.toString());
   }, [isPdfPanelCollapsed]);
+
+  // Apply theme to <html> and persist
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const root = window.document.documentElement;
+      if (theme === 'dark') {
+        root.classList.add('dark');
+      } else {
+        root.classList.remove('dark');
+      }
+      localStorage.setItem('theme', theme);
+    }
+  }, [theme]);
 
   // Handle document uploads from Sidebar
   useEffect(() => {
@@ -165,11 +190,38 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const currentChatMessages = selectedDocumentId ? chatSessions[selectedDocumentId] || [] : [];
   const selectedDocument = selectedDocumentId ? uploadedDocuments.find(doc => doc.id === selectedDocumentId) : null;
 
+  const handleDeleteDocument = async (docId: string) => {
+    // Remove from uploadedDocuments
+    setUploadedDocuments(prev => prev.filter(doc => doc.id !== docId));
+    // Remove from chatSessions
+    setChatSessions(prev => {
+      const updated = { ...prev };
+      delete updated[docId];
+      return updated;
+    });
+    // If the deleted document is selected, select another or clear selection
+    setSelectedDocumentId(prev => {
+      if (prev === docId) {
+        const remaining = uploadedDocuments.filter(doc => doc.id !== docId);
+        return remaining.length > 0 ? remaining[0].id : null;
+      }
+      return prev;
+    });
+    // Call backend to delete document
+    try {
+      await axios.delete(`http://localhost:8000/document/${docId}`);
+    } catch (err) {
+      // Optionally show error to user
+      console.error("Failed to delete document from backend", err);
+    }
+  };
+
   const sidebar = sidebarChild && React.isValidElement(sidebarChild)
     ? React.cloneElement(sidebarChild as React.ReactElement<any>, {
         uploadedDocuments: uploadedDocuments,
         selectedDocumentId: selectedDocumentId,
         onSelectDocument: handleSelectDocument,
+        onDeleteDocument: handleDeleteDocument, // Pass delete handler
       })
     : null;
 
@@ -177,9 +229,11 @@ export default function MainLayout({ children }: MainLayoutProps) {
     ? React.cloneElement(chatChild as React.ReactElement<any>, {
         messages: currentChatMessages,
         documentId: selectedDocumentId, // Pass current doc ID for context
+        documentName: selectedDocument ? selectedDocument.name : null, // Pass the name for the header
         onAddMessage: (message: ChatMessage) => selectedDocumentId && handleAddChatMessage(selectedDocumentId, message),
         onNewChat: () => selectedDocumentId && handleNewChatForDocument(selectedDocumentId),
-        // Also, ChatInterface no longer needs its own documentUploaded listener
+        theme,
+        setTheme,
       })
     : null;
 
@@ -202,7 +256,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
    : null;
 
   return (
-    <div ref={layoutRef} className="flex h-screen bg-gray-50 overflow-hidden">
+    <div ref={layoutRef} className="flex h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white overflow-hidden transition-colors duration-300">
       {/* Left Sidebar */}
       <motion.div
         style={{ width: `${sidebarPercentage}%` }}
@@ -215,9 +269,9 @@ export default function MainLayout({ children }: MainLayoutProps) {
       <motion.div
         animate={{ width: chatPanelCalcWidth }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="h-full flex flex-col bg-white flex-shrink-0"
+        className="h-full flex flex-col bg-white dark:bg-gray-900 flex-shrink-0 transition-colors duration-300"
       >
-        {chatInterface}
+        {chatInterface} 
       </motion.div>
 
       {/* Right Panel - PDF Viewer Container (always rendered) */}
@@ -225,8 +279,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
          <motion.div
             animate={{ width: currentPdfContainerWidth }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="h-full bg-gray-100 border-l border-gray-200 flex-shrink-0 overflow-hidden relative"
-            // The PDFViewer child will control its own background styling for collapsed state
+            className="h-full bg-gray-100 dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex-shrink-0 overflow-hidden relative transition-colors duration-300"
          >
            {pdfViewer} 
          </motion.div>

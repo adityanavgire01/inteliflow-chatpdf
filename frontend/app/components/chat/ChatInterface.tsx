@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { PaperAirplaneIcon, PlusIcon } from '@heroicons/react/24/outline';
+import { PaperAirplaneIcon, PlusIcon, SunIcon, MoonIcon } from '@heroicons/react/24/outline';
 import { motion } from 'framer-motion';
 import axios from 'axios';
 
@@ -27,6 +27,8 @@ interface ChatInterfaceProps {
   documentName?: string | null;    // Name of the selected document (for header)
   onAddMessage?: (message: ChatMessageFromLayout) => void;
   onNewChat?: () => void;
+  theme?: 'light' | 'dark';
+  setTheme?: (theme: 'light' | 'dark') => void;
 }
 
 export default function ChatInterface({
@@ -35,17 +37,36 @@ export default function ChatInterface({
   documentName,
   onAddMessage,
   onNewChat,
+  theme = 'light',
+  setTheme,
 }: ChatInterfaceProps) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // Transform messages from layout to display format (adding id, timestamp)
-  // This is a simple transformation; in a real app, backend might provide full objects
+  // Store timestamps for messages in a ref to avoid re-creating on every render
+  const [messageTimestamps, setMessageTimestamps] = useState<{ [key: string]: Date }>({});
+
+  // When messages array changes (new message added), add timestamp if not present
+  useEffect(() => {
+    if (!documentId) return;
+    setMessageTimestamps(prev => {
+      const updated = { ...prev };
+      messages.forEach((msg, idx) => {
+        const key = `${documentId}_${idx}`;
+        if (!updated[key]) {
+          updated[key] = new Date();
+        }
+      });
+      return updated;
+    });
+  }, [messages, documentId]);
+
+  // Use a stable key for each message (documentId + index)
   const displayMessages: DisplayMessage[] = messages.map((msg, index) => ({
-    id: `${documentId}_${index}_${new Date().getTime()}`, // Simple unique ID
+    id: `${documentId}_${index}`,
     role: msg.role as 'user' | 'ai',
     content: msg.content,
-    timestamp: new Date(), // Placeholder timestamp
+    timestamp: messageTimestamps[`${documentId}_${index}`] || new Date(),
   }));
 
   const handleSend = async () => {
@@ -103,12 +124,25 @@ export default function ChatInterface({
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-900 text-gray-900 dark:text-white transition-colors duration-300">
       {/* Header */}
-      <div className="p-4 border-b border-gray-200">
-        <h2 className="text-lg font-semibold">
+      <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+        <h2 className="text-lg font-semibold truncate">
           {documentName ? documentName : 'No Document Selected'}
         </h2>
+        {setTheme && (
+          <button
+            className="p-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark' ? (
+              <SunIcon className="w-5 h-5 text-yellow-400" />
+            ) : (
+              <MoonIcon className="w-5 h-5 text-gray-700" />
+            )}
+          </button>
+        )}
       </div>
 
       {/* Message Thread */}
@@ -167,7 +201,7 @@ export default function ChatInterface({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder={documentId ? "Ask about your document..." : "Upload or select a document..."}
-            className="flex-1 p-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="flex-1 p-2 border border-gray-200 dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-gray-900 dark:bg-gray-800 dark:text-white transition-colors duration-300"
             onKeyPress={(e) => e.key === 'Enter' && handleSend()}
             disabled={!documentId || isLoading}
           />
