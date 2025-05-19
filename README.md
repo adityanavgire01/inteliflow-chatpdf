@@ -1,39 +1,56 @@
-# ChatPDF
+# ChatPDF Application
 
-An interactive platform for chatting with PDF documents using AI. Upload PDFs and ask questions about their content in natural language.
-
-## Features
-
-- PDF Upload and Processing
-- Natural Language Question Answering
-- Contextual Conversation Memory
-- Modern, Responsive UI
-- Secure Document Handling
-
-## Tech Stack
-
-- Frontend: Next.js with TypeScript
-- Backend: FastAPI (Python)
-- AI: OpenAI GPT for text generation
-- Vector Database: Chroma for document embeddings
-- PDF Processing: PyPDF2
+This application allows users to upload PDFs and chat with them using AI. It consists of:
+- A FastAPI backend that processes PDFs and manages chat interactions
+- A ChromaDB vector store for semantic search
+- A Next.js frontend interface
 
 ## Project Structure
 
 ```
-inteliflow-chatpdf/
-├── frontend/           # Next.js frontend application
-├── backend/           # FastAPI backend server
-└── README.md         # Project documentation
+.
+├── backend/               # FastAPI backend
+│   ├── main.py            # Main application file
+│   ├── requirements.txt   # Python dependencies
+│   ├── Procfile           # For Railway deployment
+│   └── .env.example       # Example environment variables
+├── frontend/              # Next.js frontend
+│   ├── app/               # Next.js app directory
+│   ├── package.json       # Node.js dependencies
+│   └── .env.example       # Example environment variables
+└── README.md              # This file
 ```
 
-## Setup Instructions
+## Local Development
 
-### Prerequisites
+### Backend Setup
 
-- Node.js 18+ and npm
-- Python 3.9+
-- OpenAI API key
+1. Navigate to the backend directory:
+   ```bash
+   cd backend
+   ```
+
+2. Create a virtual environment and activate it:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate   # On Windows: venv\Scripts\activate
+   ```
+
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. Copy the example environment file and update with your OpenAI API key:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your OpenAI API key
+   ```
+
+5. Run the backend server:
+   ```bash
+   uvicorn main:app --reload
+   ```
 
 ### Frontend Setup
 
@@ -47,45 +64,112 @@ inteliflow-chatpdf/
    npm install
    ```
 
-3. Start the development server:
+3. Copy the example environment file:
+   ```bash
+   cp .env.example .env
+   ```
+
+4. Run the frontend development server:
    ```bash
    npm run dev
    ```
 
-### Backend Setup
+5. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-1. Navigate to the backend directory:
+## Deployment
+
+### Backend Deployment (Railway)
+
+1. Create a Railway account at [railway.app](https://railway.app)
+
+2. Install the Railway CLI and login:
+   ```bash
+   npm i -g @railway/cli
+   railway login
+   ```
+
+3. Navigate to the backend directory and initialize a new project:
    ```bash
    cd backend
+   railway init
    ```
 
-2. Create a virtual environment:
+4. Deploy to Railway:
    ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   railway up
    ```
 
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+5. Set up environment variables in the Railway dashboard:
+   - OPENAI_API_KEY (required)
+   - APP_ENV=production
+   - Other variables as needed
 
-4. Set up environment variables:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your OpenAI API key
-   ```
+### Frontend Deployment (Vercel)
 
-5. Start the backend server:
-   ```bash
-   uvicorn main:app --reload
-   ```
+1. Push your code to GitHub
 
-## Development
+2. Go to [Vercel](https://vercel.com) and create an account
 
-- Frontend runs on http://localhost:3000
-- Backend runs on http://localhost:8000
+3. Import your GitHub repository
+
+4. Configure the project:
+   - Framework: Next.js
+   - Root Directory: frontend
+   - Build Command: npm run build
+   - Output Directory: .next
+
+5. Add environment variables:
+   - NEXT_PUBLIC_API_URL: Your Railway backend URL (e.g., https://chatpdf-backend.railway.app)
+   - NEXT_PUBLIC_APP_ENV: production
+
+6. Deploy the project
+
+## Features
+
+- Upload PDF documents
+- Chat with your documents using AI
+- Context-aware responses based on document content
+- Persistent document storage
+
+## Technologies Used
+
+- **Backend**: FastAPI, ChromaDB, OpenAI API
+- **Frontend**: Next.js, TailwindCSS
+- **Deployment**: Railway, Vercel
+
+## API Endpoints
+
+- `POST /upload` - Upload a PDF file
+- `POST /chat` - Chat with the uploaded PDF
+- `GET /document/{document_id}` - Get document details
+- `DELETE /document/{document_id}` - Delete a document
+
+## Environment Variables
+
+### Backend (.env)
+```
+OPENAI_API_KEY=your_key_here
+APP_ENV=production
+CHROMA_HOST=chromadb
+CHROMA_PORT=8000
+MAX_REQUESTS_PER_MINUTE=60
+MAX_FILE_SIZE_MB=10
+```
+
+### Frontend (.env)
+```
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_APP_ENV=production
+```
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
 ## License
 
-MIT 
+This project is licensed under the MIT License. 

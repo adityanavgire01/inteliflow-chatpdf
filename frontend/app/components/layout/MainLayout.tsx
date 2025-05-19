@@ -276,13 +276,13 @@ export default function MainLayout({ children }: MainLayoutProps) {
 
       {/* Right Panel - PDF Viewer Container (always rendered) */}
       {pdfViewer && (
-         <motion.div
+      <motion.div
             animate={{ width: currentPdfContainerWidth }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
             className="h-full bg-gray-100 dark:bg-gray-800 border-l border-gray-200 dark:border-gray-700 flex-shrink-0 overflow-hidden relative transition-colors duration-300"
-         >
+      >
            {pdfViewer} 
-         </motion.div>
+      </motion.div>
       )}
     </div>
   );

@@ -76,7 +76,7 @@ export default function ChatInterface({
       role: 'user',
       content: input,
     };
-    
+
     // Add user message to local state/UI immediately via MainLayout
     onAddMessage(userMessage);
     
@@ -109,7 +109,7 @@ export default function ChatInterface({
       if (onAddMessage) {
         onAddMessage({
           role: 'ai', // Store as 'ai' internally
-          content: 'Error processing your request. Please try again.',
+        content: 'Error processing your request. Please try again.',
         });
       }
     } finally {

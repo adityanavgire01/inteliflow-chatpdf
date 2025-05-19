@@ -135,14 +135,14 @@ export default function PDFViewer({
 
       {documentToDisplay && (
         <div className="flex-1 overflow-auto p-1 bg-gray-200">
-          <iframe
+        <iframe
             key={documentToDisplay.id}
             src={`http://localhost:8000/document/${documentToDisplay.id}`}
-            className="w-full h-full border-0"
+          className="w-full h-full border-0"
             style={{ transform: `scale(${scale})`, transformOrigin: '0 0' }}
             title={documentToDisplay.name || 'PDF Document'}
-          />
-        </div>
+        />
+      </div>
       )}
     </div>
   );

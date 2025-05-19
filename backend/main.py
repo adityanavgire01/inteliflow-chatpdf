@@ -28,7 +28,11 @@ app = FastAPI(title="ChatPDF API")
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[
+        "http://localhost:3000",  # Local development
+        "https://*.vercel.app",   # Vercel deployment
+        os.getenv("FRONTEND_URL", "")  # Production frontend URL
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -41,9 +45,27 @@ if not os.getenv("OPENAI_API_KEY"):
     raise ValueError("OPENAI_API_KEY not found in environment variables")
 
 # Initialize ChromaDB client
-chroma_client = chromadb.Client(Settings(
-    persist_directory="db"
-))
+if APP_ENV == "production":
+    # For Railway deployment, we can use Chroma in a local persistence mode
+    # This stores embeddings in a local directory
+    try:
+        chroma_client = chromadb.PersistentClient(path="./chroma_db")
+        logger.info("Using Chroma in PersistentClient mode")
+    except Exception as e:
+        logger.error(f"Error initializing Chroma PersistentClient: {e}")
+        # Fallback to HTTP client if running with ChromaDB service
+        chroma_client = chromadb.HttpClient(
+            host=os.getenv("CHROMA_HOST", "localhost"),
+            port=int(os.getenv("CHROMA_PORT", "8000"))
+        )
+        logger.info("Fallback to Chroma HttpClient")
+else:
+    # For development with Docker, use the HttpClient
+    chroma_client = chromadb.HttpClient(
+        host=os.getenv("CHROMA_HOST", "localhost"),
+        port=int(os.getenv("CHROMA_PORT", "8000"))
+    )
+    logger.info("Using Chroma HttpClient for development")
 
 # If in development mode, clear all collections on startup
 if APP_ENV == "development":
@@ -72,13 +94,34 @@ class ChatResponse(BaseModel):
 # Store for document files - now stores content and original name
 document_files = {}
 
+def chunk_text(text: str, chunk_size: int = 500) -> List[str]:
+    """Split text into smaller chunks."""
+    words = text.split()
+    chunks = []
+    current_chunk = []
+    current_size = 0
+    
+    for word in words:
+        word_size = len(word) + 1  # +1 for space
+        if current_size + word_size > chunk_size:
+            chunks.append(" ".join(current_chunk))
+            current_chunk = [word]
+            current_size = word_size
+        else:
+            current_chunk.append(word)
+            current_size += word_size
+    
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
+    
+    return chunks
+
 @app.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
     if not file.filename.endswith('.pdf'):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
     
     original_filename = file.filename
-    # Generate a unique ID for the document and collection name
     document_id_uuid = str(uuid.uuid4())
     
     try:
@@ -90,37 +133,35 @@ async def upload_pdf(file: UploadFile = File(...)):
         for page in pdf_reader.pages:
             extracted_text = page.extract_text()
             if extracted_text:
-                text += extracted_text
+                text += extracted_text + "\n"
         
         if not text.strip():
             logger.warning(f"No text could be extracted from PDF: {original_filename}")
-            # Decide if you want to raise an error or allow upload of empty text PDFs
-            # For now, let it proceed but it might not be useful for chat
+            raise HTTPException(status_code=400, detail="No text could be extracted from the PDF")
 
         # Store the PDF file content and its original name
         document_files[document_id_uuid] = {"content": content, "name": original_filename}
         
-        # Use get_or_create_collection for robustness
+        # Create collection and add chunks
         collection = chroma_client.get_or_create_collection(name=document_id_uuid)
         
-        chunks = [text[i:i+1000] for i in range(0, len(text), 1000)] if text else []
-        if chunks: # Only add if there are chunks to add
-            collection.add(
-                documents=chunks,
-                ids=[f"{document_id_uuid}_{i}" for i in range(len(chunks))]
-            )
-        else:
-            logger.info(f"No text chunks to add to ChromaDB for document: {original_filename} (UUID: {document_id_uuid})")
+        # Split text into smaller chunks
+        chunks = chunk_text(text)
+        
+        if chunks:
+            # Add chunks in batches of 100
+            batch_size = 100
+            for i in range(0, len(chunks), batch_size):
+                batch_chunks = chunks[i:i + batch_size]
+                collection.add(
+                    documents=batch_chunks,
+                    ids=[f"{document_id_uuid}_{j}" for j in range(i, i + len(batch_chunks))]
+                )
             
-        # Return the UUID as document_id and the original filename
         return {"document_id": document_id_uuid, "fileName": original_filename, "message": "PDF processed successfully"}
     
     except Exception as e:
         logger.error(f"Error in upload_pdf for {original_filename}: {str(e)}")
-        # Clean up if collection was created but process failed partially (optional)
-        # if chroma_client.get_collection(name=document_id_uuid): 
-        #    chroma_client.delete_collection(name=document_id_uuid)
-        # if document_id_uuid in document_files: del document_files[document_id_uuid]
         raise HTTPException(status_code=500, detail=f"Error processing {original_filename}: {str(e)}")
 
 @app.get("/document/{document_id}")
@@ -205,6 +246,12 @@ async def delete_document(document_id: str):
         logger.warning(f"ChromaDB collection for {document_id} could not be deleted: {e}")
     return {"message": f"Document {document_id} deleted successfully."}
 
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "environment": APP_ENV}
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run(app, host="0.0.0.0", port=port) 

@@ -46,7 +46,7 @@ export default function Sidebar({
             'Content-Type': 'multipart/form-data',
           },
         });
-        
+
         const event = new CustomEvent('documentUploaded', {
           detail: { documentId: response.data.document_id, fileName: acceptedFiles[0].name }
         });
@@ -97,8 +97,8 @@ export default function Sidebar({
                     onDeleteDocument(doc.id);
                   }}
                 >
-                  <TrashIcon className="w-4 h-4" />
-                </button>
+                <TrashIcon className="w-4 h-4" />
+              </button>
               )}
             </div>
           </div>
